@@ -221,14 +221,18 @@ if st.session_state.articles_data:
             article_key = f"{idx}_{article['url']}"
 
             with st.container(border=True):
-                # Source badge with better styling
-                source = article.get("source", "").lower()
-                if "washington" in source:
+                # Source badge with better styling - proper detection
+                source = article.get("source", "").lower().replace(" ", "")
+
+                if "washingtonpost" in source or "washington" in source:
                     source_badge = "🔴 Washington Post"
                     badge_color = "#c53030"
-                else:
+                elif "nyt" in source or "newyork" in source:
                     source_badge = "🟡 NYT"
                     badge_color = "#d69e2e"
+                else:
+                    source_badge = f"📰 {source.upper()}"
+                    badge_color = "#2d3748"
 
                 st.markdown(f"<span style='color: {badge_color}; font-weight: bold; font-size: 0.9rem;'>{source_badge}</span>", unsafe_allow_html=True)
 
@@ -299,20 +303,28 @@ try:
     if saved_response.status_code == 200:
         saved_data = saved_response.json()
         saved_articles = saved_data.get("articles", [])
+        total_saved = saved_data.get("total_saved", len(saved_articles))
 
-        if saved_articles:
-            st.markdown(f"**{len(saved_articles)} Saved Article(s)**")
+        if saved_articles and total_saved > 0:
+            st.markdown(f"**{total_saved} Saved Article(s)**")
             st.divider()
 
             for idx, article in enumerate(saved_articles):
                 with st.container(border=True):
-                    source = article.get("source", "").lower()
-                    if "washington" in source:
-                        source_badge = "🔴 Washington Post"
-                    else:
-                        source_badge = "🟡 NYT"
+                    source = article.get("source", "").lower().replace(" ", "")
 
-                    st.markdown(f"<span style='color: #2d3748; font-weight: bold;'>{source_badge}</span>", unsafe_allow_html=True)
+                    # Proper source detection
+                    if "washingtonpost" in source or "washington" in source:
+                        source_badge = "🔴 Washington Post"
+                        badge_color = "#c53030"
+                    elif "nyt" in source or "newyork" in source:
+                        source_badge = "🟡 NYT"
+                        badge_color = "#d69e2e"
+                    else:
+                        source_badge = f"📰 {source.upper()}"
+                        badge_color = "#2d3748"
+
+                    st.markdown(f"<span style='color: {badge_color}; font-weight: bold;'>{source_badge}</span>", unsafe_allow_html=True)
                     st.subheader(article["title"], divider="gray")
 
                     published = article.get("published_at", "N/A")

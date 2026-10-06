@@ -328,6 +328,10 @@ async def get_saved_articles_endpoint(days_back: int = 7):
     """Get saved articles from last N days"""
     try:
         articles = db.get_saved_articles(days_back=days_back)
+        logger.info(f"✅ Retrieved {len(articles)} saved articles from database")
+
+        if articles:
+            logger.info(f"📄 Sample article: {articles[0]}")
 
         return {
             "status": "success",

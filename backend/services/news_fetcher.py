@@ -233,8 +233,15 @@ class WashingtonPostFetcher:
                             title = link.get_text(strip=True)
 
                             # Skip if no title or URL
-                            if not title or len(title) < 5:
+                            if not title or len(title) < 10:  # Require at least 10 chars (avoid single words)
                                 continue
+
+                            # Skip common non-article titles (one word, generic section names)
+                            title_words = len(title.split())
+                            if title_words < 3:  # Require at least 3 words in title
+                                logger.info(f"   ⏭️  Skipping short title: {title}")
+                                continue
+
                             if not href:
                                 continue
 
@@ -290,12 +297,13 @@ class WashingtonPostFetcher:
         return articles
 
     def _filter_by_interests(self, articles: List[ArticleCreate], interests: List[str]) -> List[ArticleCreate]:
-        """Filter articles by interests"""
+        """Filter articles by interests - strict matching"""
         if not interests:
             return articles
 
         filtered = []
         interests_lower = [i.lower() for i in interests]
+        logger.info(f"🎯 Filtering {len(articles)} articles by interests: {interests_lower}")
 
         for article in articles:
             # Check if any interest matches in title, description, or category
@@ -304,12 +312,24 @@ class WashingtonPostFetcher:
             category_lower = article.category.lower() if article.category else ""
             content_lower = article.content.lower() if article.content else ""
 
-            # Match if interest appears in any field
-            if any(interest in title_lower or interest in desc_lower or
-                   interest in category_lower or interest in content_lower
-                   for interest in interests_lower):
-                filtered.append(article)
+            # Match if interest appears in any field (whole word match preferred)
+            matched = False
+            for interest in interests_lower:
+                # Check for word boundary matches (not substring)
+                if (f" {interest} " in f" {title_lower} " or
+                    f" {interest} " in f" {desc_lower} " or
+                    interest == category_lower or
+                    f" {interest} " in f" {content_lower} "):
+                    matched = True
+                    logger.info(f"✅ Matched: {article.title[:50]} → {interest}")
+                    break
 
+            if matched:
+                filtered.append(article)
+            else:
+                logger.info(f"❌ Filtered out: {article.title[:50]}")
+
+        logger.info(f"📊 Final: {len(filtered)} articles after interest filtering")
         return filtered
 
 
