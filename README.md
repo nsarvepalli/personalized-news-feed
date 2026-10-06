@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 📰 Personalized News Feed
 
 An AI-powered news aggregator that fetches articles from multiple sources, automatically generates summaries, and presents them in a clean, user-friendly interface.
@@ -92,3 +93,7 @@ Frontend opens at `http://localhost:8888`
 ## Author
 
 Nithya Sarvepalli
+=======
+# personalized-news-feed
+AI-powered news aggregator customized to individuals interests. Cut's out unnecessary news and doom scrolling
+>>>>>>> f9bbef34288241255e33ca334f957ca500776a3c
