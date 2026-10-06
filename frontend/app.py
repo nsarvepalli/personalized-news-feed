@@ -180,6 +180,8 @@ interests_str = ",".join(final_interests) if final_interests else ""
 if search_btn:
     if not sources_str:
         st.warning("⚠️ Please select at least one news source")
+    elif not final_interests:
+        st.warning("⚠️ Please select at least one interest")
     else:
         try:
             with st.spinner("⏳ Fetching articles..."):
@@ -187,7 +189,8 @@ if search_btn:
                     f"{backend_url}/fetch/articles",
                     params={
                         "days_back": days_back,
-                        "sources": sources_str
+                        "sources": sources_str,
+                        "interests": interests_str
                     },
                     timeout=120
                 )
@@ -260,7 +263,23 @@ if st.session_state.articles_data:
 
                 with col2:
                     if st.button("💾 Save Article", key=f"save_{idx}", use_container_width=True):
-                        st.success("✅ Saved!")
+                        try:
+                            save_response = requests.post(
+                                f"{backend_url}/articles/save",
+                                params={
+                                    "url": article["url"],
+                                    "title": article["title"],
+                                    "source": article.get("source", ""),
+                                    "category": article.get("category", ""),
+                                    "summary": st.session_state.article_summaries.get(article_key, "")
+                                }
+                            )
+                            if save_response.status_code == 200:
+                                st.success("✅ Article saved to your collection!")
+                            else:
+                                st.error("Failed to save article")
+                        except Exception as e:
+                            st.error(f"Error saving article: {str(e)}")
 
                 with col3:
                     if st.button("📤 Share", key=f"share_{idx}", use_container_width=True):
@@ -270,3 +289,58 @@ if st.session_state.articles_data:
 else:
     if st.session_state.articles_data is None:
         st.info("👈 Select sources, interests, and click Search to get started")
+
+# Saved Articles Section
+st.divider()
+st.markdown("### 💾 Your Saved Articles")
+
+try:
+    saved_response = requests.get(f"{backend_url}/articles/saved")
+    if saved_response.status_code == 200:
+        saved_data = saved_response.json()
+        saved_articles = saved_data.get("articles", [])
+
+        if saved_articles:
+            st.markdown(f"**{len(saved_articles)} Saved Article(s)**")
+            st.divider()
+
+            for idx, article in enumerate(saved_articles):
+                with st.container(border=True):
+                    source = article.get("source", "").lower()
+                    if "washington" in source:
+                        source_badge = "🔴 Washington Post"
+                    else:
+                        source_badge = "🟡 NYT"
+
+                    st.markdown(f"<span style='color: #2d3748; font-weight: bold;'>{source_badge}</span>", unsafe_allow_html=True)
+                    st.subheader(article["title"], divider="gray")
+
+                    published = article.get("published_at", "N/A")
+                    st.caption(f"📅 {published}")
+
+                    st.write(article.get("description", ""))
+
+                    col1, col2, col3 = st.columns(3, gap="small")
+                    with col1:
+                        st.link_button("🌐 Read Full Article", article["url"], use_container_width=True)
+                    with col2:
+                        if st.button("🗑️ Remove", key=f"delete_{idx}", use_container_width=True):
+                            try:
+                                delete_response = requests.delete(
+                                    f"{backend_url}/articles/save",
+                                    params={"url": article["url"]}
+                                )
+                                if delete_response.status_code == 200:
+                                    st.success("✅ Removed from saved!")
+                                    st.rerun()
+                            except:
+                                st.error("Error removing article")
+                    with col3:
+                        if st.button("📤 Share", key=f"share_saved_{idx}", use_container_width=True):
+                            st.info("📋 Ready to share!")
+        else:
+            st.info("No saved articles yet. Save articles from the search results above!")
+    else:
+        st.info("No saved articles yet.")
+except:
+    st.info("No saved articles yet.")

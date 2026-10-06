@@ -214,7 +214,7 @@ async def update_preferences(prefs: UserPreferenceCreate):
 
 # News Fetcher endpoints (for testing)
 @app.post("/fetch/articles", tags=["Fetch"])
-async def fetch_articles(days_back: int = 1, sources: str = None):
+async def fetch_articles(days_back: int = 1, sources: str = None, interests: str = None):
     """
     Fetch articles from specified sources
 
@@ -222,6 +222,7 @@ async def fetch_articles(days_back: int = 1, sources: str = None):
         days_back: Number of days to look back
         sources: Comma-separated sources (nyt, bloomberg, washingtonpost)
                  If None, fetches from all configured sources
+        interests: Comma-separated interests to filter articles (e.g., business, ai, technology)
 
     This is a test endpoint to verify news fetchers are working.
     In production, this would be called by GitHub Actions on a schedule.
@@ -253,7 +254,13 @@ async def fetch_articles(days_back: int = 1, sources: str = None):
         else:
             logger.info("📰 Fetching from all available sources (sources param is None/empty)")
 
-        articles = await news_aggregator.fetch_all(days_back=days_back, sources=sources_list)
+        # Parse interests
+        interests_list = None
+        if interests:
+            interests_list = [i.strip().lower() for i in interests.split(",") if i.strip()]
+            logger.info(f"🎯 INTERESTS TO FILTER: {interests_list}")
+
+        articles = await news_aggregator.fetch_all(days_back=days_back, sources=sources_list, interests=interests_list)
 
         # Log final results
         with open(debug_path, "a") as f:

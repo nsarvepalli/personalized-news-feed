@@ -169,15 +169,16 @@ class WashingtonPostFetcher:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         })
 
-    async def fetch(self, days_back: int = 1) -> List[ArticleCreate]:
+    async def fetch(self, days_back: int = 1, interests: List[str] = None) -> List[ArticleCreate]:
         """
         Fetch articles from Washington Post by scraping (works for subscribers)
 
         Args:
             days_back: Number of days to look back
+            interests: List of interests to filter articles by
 
         Returns:
-            List of ArticleCreate objects
+            List of ArticleCreate objects filtered by interests
         """
         articles = []
 
@@ -276,12 +277,40 @@ class WashingtonPostFetcher:
                     logger.warning(f"⚠️  Error scraping {section}: {e}")
                     continue
 
-            logger.info(f"✅ Washington Post: Total {len(articles)} articles")
+            logger.info(f"✅ Washington Post: Total {len(articles)} articles before filtering")
 
         except Exception as e:
             logger.error(f"❌ Washington Post fetcher error: {e}")
 
+        # Filter by interests if provided
+        if interests:
+            articles = self._filter_by_interests(articles, interests)
+            logger.info(f"✅ Washington Post: {len(articles)} articles after interest filtering")
+
         return articles
+
+    def _filter_by_interests(self, articles: List[ArticleCreate], interests: List[str]) -> List[ArticleCreate]:
+        """Filter articles by interests"""
+        if not interests:
+            return articles
+
+        filtered = []
+        interests_lower = [i.lower() for i in interests]
+
+        for article in articles:
+            # Check if any interest matches in title, description, or category
+            title_lower = article.title.lower()
+            desc_lower = article.description.lower() if article.description else ""
+            category_lower = article.category.lower() if article.category else ""
+            content_lower = article.content.lower() if article.content else ""
+
+            # Match if interest appears in any field
+            if any(interest in title_lower or interest in desc_lower or
+                   interest in category_lower or interest in content_lower
+                   for interest in interests_lower):
+                filtered.append(article)
+
+        return filtered
 
 
 class BloombergFetcher:
@@ -554,7 +583,7 @@ class NewsAggregator:
         # Washington Post fetcher is always available (uses RSS)
         logger.info("✅ Washington Post fetcher initialized (RSS)")
 
-    async def fetch_all(self, days_back: int = 1, sources: List[str] = None) -> List[ArticleCreate]:
+    async def fetch_all(self, days_back: int = 1, sources: List[str] = None, interests: List[str] = None) -> List[ArticleCreate]:
         """
         Fetch from configured sources in parallel, with optional filtering
 
@@ -562,9 +591,10 @@ class NewsAggregator:
             days_back: Number of days to look back
             sources: List of sources to fetch from (nyt, bloomberg, washingtonpost)
                     If None, fetches from all available sources
+            interests: List of interests to filter articles by
 
         Returns:
-            Aggregated list of unique articles
+            Aggregated list of unique articles filtered by interests
         """
         # PRINT DEBUG
         import os
@@ -609,7 +639,11 @@ class NewsAggregator:
         if "nyt" in sources:
             with open(debug_path, "a") as f:
                 f.write(f"[fetch_all] Adding NYT fetcher\n")
-            tasks.append(("nyt", self.nyt_fetcher.fetch(days_back=days_back)))
+            # Convert interests to query string for NYT API
+            query = None
+            if interests:
+                query = " OR ".join(interests)
+            tasks.append(("nyt", self.nyt_fetcher.fetch(days_back=days_back, query=query)))
             logger.info("Added NYT fetcher")
 
         # Add Bloomberg if requested and configured
@@ -630,7 +664,7 @@ class NewsAggregator:
         if "washingtonpost" in sources:
             with open(debug_path, "a") as f:
                 f.write(f"[fetch_all] Adding Washington Post fetcher\n")
-            tasks.append(("washingtonpost", self.washingtonpost_fetcher.fetch(days_back=days_back)))
+            tasks.append(("washingtonpost", self.washingtonpost_fetcher.fetch(days_back=days_back, interests=interests)))
             logger.info("Added Washington Post fetcher (RSS)")
 
         with open(debug_path, "a") as f:
