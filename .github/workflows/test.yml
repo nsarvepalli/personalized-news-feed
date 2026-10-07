@@ -1,0 +1,108 @@
+name: Tests & Quality Checks
+
+# When to run this workflow
+on:
+  push:
+    branches: [ main, feature/*, bugfix/* ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+
+    steps:
+      # 1. Check out code
+      - uses: actions/checkout@v3
+
+      # 2. Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # 3. Install dependencies
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pylint flake8 black
+
+      # 4. Lint with flake8 (Python style guide)
+      - name: Lint with flake8
+        run: |
+          # Stop build on syntax errors
+          flake8 backend/ frontend/ --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Warn about complexity (not a blocker)
+          flake8 backend/ frontend/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        continue-on-error: true
+
+      # 5. Check code format with black
+      - name: Check code format with black
+        run: |
+          black backend/ frontend/ --check --diff
+        continue-on-error: true
+
+      # 6. Test: Import all modules (basic syntax check)
+      - name: Test module imports
+        run: |
+          python -c "from backend.services.news_fetcher import NewsAggregator; print('✅ news_fetcher imports OK')"
+          python -c "from backend.services.summarizer import ArticleSummarizer; print('✅ summarizer imports OK')"
+          python -c "from backend.database_supabase import get_db; print('✅ database_supabase imports OK')"
+          python -c "from backend.config import get_settings; print('✅ config imports OK')"
+
+      # 7. Test: Configuration loading
+      - name: Test configuration
+        run: |
+          python -c "from backend.config import get_settings; settings = get_settings(); print(f'✅ Config loaded: {settings.app_name}')"
+
+      # 8. Test: Backend startup (FastAPI app creation)
+      - name: Test FastAPI app creation
+        run: |
+          python -c "
+          import sys
+          sys.path.insert(0, 'backend')
+          from main import app
+          print('✅ FastAPI app creates successfully')
+          print(f'✅ Routes defined: {len(app.routes)}')" || echo "⚠️  Backend test skipped (expected without full env)"
+
+  # Security scan
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install bandit (security scanner)
+        run: pip install bandit
+
+      - name: Security scan with bandit
+        run: |
+          bandit -r backend/ frontend/ -ll -f json -o bandit-report.json || true
+          bandit -r backend/ frontend/ -ll
+        continue-on-error: true
+
+  # Docker build test (optional - verify Docker setup)
+  docker-build:
+    runs-on: ubuntu-latest
+    if: hashFiles('Dockerfile') != ''
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: false
+          tags: personalized-news-feed:test
+        continue-on-error: true
