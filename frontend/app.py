@@ -338,15 +338,27 @@ try:
                     with col2:
                         if st.button("🗑️ Remove", key=f"delete_{idx}", use_container_width=True):
                             try:
+                                url_to_delete = article["article_url"]
+                                print(f"[DEBUG] Deleting: {url_to_delete}")
+
                                 delete_response = requests.delete(
                                     f"{backend_url}/articles/save",
-                                    params={"url": article["article_url"]}
+                                    params={"url": url_to_delete}
                                 )
+
+                                print(f"[DEBUG] Delete response: {delete_response.status_code}")
+                                print(f"[DEBUG] Response body: {delete_response.json()}")
+
                                 if delete_response.status_code == 200:
                                     st.success("✅ Removed from saved!")
+                                    # Force page refresh
+                                    st.cache_data.clear()
                                     st.rerun()
-                            except:
-                                st.error("Error removing article")
+                                else:
+                                    st.error(f"Failed to remove (Status {delete_response.status_code})")
+                            except Exception as e:
+                                st.error(f"Error removing article: {str(e)}")
+                                print(f"[DEBUG] Error: {e}")
                     with col3:
                         if st.button("📤 Share", key=f"share_saved_{idx}", use_container_width=True):
                             st.info("📋 Ready to share!")
