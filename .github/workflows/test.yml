@@ -89,20 +89,17 @@ jobs:
           bandit -r backend/ frontend/ -ll
         continue-on-error: true
 
-  # Docker build test (optional - verify Docker setup)
-  docker-build:
-    runs-on: ubuntu-latest
-    if: hashFiles('Dockerfile') != ''
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: Build Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: false
-          tags: personalized-news-feed:test
-        continue-on-error: true
+  # Docker build test (optional - uncomment when Dockerfile is ready)
+  # docker-build:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v2
+  #     - name: Build Docker image
+  #       uses: docker/build-push-action@v4
+  #       with:
+  #         context: .
+  #         push: false
+  #         tags: personalized-news-feed:test
+  #       continue-on-error: true
