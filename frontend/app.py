@@ -311,7 +311,7 @@ try:
 
             for idx, article in enumerate(saved_articles):
                 with st.container(border=True):
-                    source = article.get("source", "").lower().replace(" ", "")
+                    source = article.get("article_source", "").lower().replace(" ", "")
 
                     # Proper source detection
                     if "washingtonpost" in source or "washington" in source:
@@ -325,22 +325,22 @@ try:
                         badge_color = "#2d3748"
 
                     st.markdown(f"<span style='color: {badge_color}; font-weight: bold;'>{source_badge}</span>", unsafe_allow_html=True)
-                    st.subheader(article["title"], divider="gray")
+                    st.subheader(article["article_title"], divider="gray")
 
-                    published = article.get("published_at", "N/A")
-                    st.caption(f"📅 {published}")
+                    saved_date = article.get("saved_at", "N/A")
+                    st.caption(f"💾 Saved: {saved_date}")
 
-                    st.write(article.get("description", ""))
+                    st.write(article.get("article_summary", ""))
 
                     col1, col2, col3 = st.columns(3, gap="small")
                     with col1:
-                        st.link_button("🌐 Read Full Article", article["url"], use_container_width=True)
+                        st.link_button("🌐 Read Full Article", article["article_url"], use_container_width=True)
                     with col2:
                         if st.button("🗑️ Remove", key=f"delete_{idx}", use_container_width=True):
                             try:
                                 delete_response = requests.delete(
                                     f"{backend_url}/articles/save",
-                                    params={"url": article["url"]}
+                                    params={"url": article["article_url"]}
                                 )
                                 if delete_response.status_code == 200:
                                     st.success("✅ Removed from saved!")
