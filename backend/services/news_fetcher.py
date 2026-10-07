@@ -171,7 +171,7 @@ class WashingtonPostFetcher:
 
     async def fetch(self, days_back: int = 1, interests: List[str] = None) -> List[ArticleCreate]:
         """
-        Fetch articles from Washington Post by scraping (works for subscribers)
+        Fetch articles from Washington Post by scraping based on interests
 
         Args:
             days_back: Number of days to look back
@@ -182,13 +182,35 @@ class WashingtonPostFetcher:
         """
         articles = []
 
-        # Washington Post article sections to scrape
-        sections = [
-            "/politics",
-            "/business",
-            "/technology",
-            "/world"
-        ]
+        # Map interests to Washington Post sections
+        interest_section_map = {
+            "business": "/business",
+            "finance": "/business",
+            "career": "/jobs",
+            "technology": "/technology",
+            "ai": "/technology",
+            "education": "/local",
+            "politics": "/politics",
+            "climate": "/climate",
+            "health": "/health",
+            "science": "/national"
+        }
+
+        # Determine sections to scrape based on interests
+        sections_to_scrape = set()
+        if interests:
+            interests_lower = [i.lower() for i in interests]
+            for interest in interests_lower:
+                if interest in interest_section_map:
+                    sections_to_scrape.add(interest_section_map[interest])
+            # If no matching sections, default to business and technology
+            if not sections_to_scrape:
+                sections_to_scrape = {"/business", "/technology"}
+        else:
+            sections_to_scrape = {"/business", "/technology"}
+
+        sections = list(sections_to_scrape)
+        logger.info(f"🎯 Scraping Washington Post sections: {sections} for interests: {interests}")
 
         try:
             logger.info("🔍 Fetching Washington Post articles...")
@@ -605,60 +627,29 @@ class NewsAggregator:
 
     async def fetch_all(self, days_back: int = 1, sources: List[str] = None, interests: List[str] = None) -> List[ArticleCreate]:
         """
-        Fetch from configured sources in parallel, with optional filtering
+        Fetch from configured sources in parallel with interest filtering
 
         Args:
             days_back: Number of days to look back
-            sources: List of sources to fetch from (nyt, bloomberg, washingtonpost)
-                    If None, fetches from all available sources
-            interests: List of interests to filter articles by
+            sources: List of sources (nyt, washingtonpost)
+            interests: List of interests to filter by
 
         Returns:
-            Aggregated list of unique articles filtered by interests
+            Aggregated list of articles filtered by interests
         """
-        # PRINT DEBUG
-        import os
-        debug_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "debug.log")
-        with open(debug_path, "a") as f:
-            f.write(f"\n[fetch_all] Input sources: {repr(sources)}\n")
+        # Normalize sources
+        if sources is None:
+            sources = ["nyt"]
+        else:
+            normalized = [s.lower().replace(" ", "") for s in sources if s]
+            sources = [s for s in normalized if s in ["nyt", "bloomberg", "washingtonpost"]] or ["nyt"]
 
-        # Default to NYT only if not specified (most reliable)
-        with open(debug_path, "a") as f:
-            if sources is None:
-                f.write(f"[fetch_all] Sources is None - defaulting to NYT\n")
-                sources = ["nyt"]
-            else:
-                # Normalize source names (remove spaces, lowercase)
-                f.write(f"[fetch_all] Normalizing sources...\n")
-                normalized_sources = []
-                for s in sources:
-                    f.write(f"[fetch_all]   Processing: {repr(s)}\n")
-                    normalized = s.lower().replace(" ", "")
-                    f.write(f"[fetch_all]   After normalize: {repr(normalized)}\n")
-                    if normalized in ["nyt", "bloomberg", "washingtonpost"]:
-                        f.write(f"[fetch_all]   MATCHED - Adding to normalized_sources\n")
-                        normalized_sources.append(normalized)
-                    else:
-                        f.write(f"[fetch_all]   NOT MATCHED - Skipping\n")
-                sources = normalized_sources if normalized_sources else ["nyt"]
-                f.write(f"[fetch_all] Final normalized_sources: {sources}\n")
-
-            if not sources:
-                f.write(f"[fetch_all] Sources still empty - fallback to NYT\n")
-                sources = ["nyt"]  # Fallback to NYT
-
-            f.write(f"[fetch_all] Using sources: {sources}\n")
-        logger.info(f"🔄 Starting article fetch from sources: {sources} (last {days_back} day(s))...")
+        logger.info(f"Fetching from {sources} with interests: {interests}")
 
         tasks = []
 
         # Add NYT if requested
-        with open(debug_path, "a") as f:
-            f.write(f"[fetch_all] Building tasks list:\n")
-            f.write(f"[fetch_all] 'nyt' in {sources} = {'nyt' in sources}\n")
         if "nyt" in sources:
-            with open(debug_path, "a") as f:
-                f.write(f"[fetch_all] Adding NYT fetcher\n")
             # Convert interests to query string for NYT API
             query = None
             if interests:
@@ -667,28 +658,17 @@ class NewsAggregator:
             logger.info("Added NYT fetcher")
 
         # Add Bloomberg if requested and configured
-        with open(debug_path, "a") as f:
-            f.write(f"[fetch_all] 'bloomberg' in {sources} = {'bloomberg' in sources}\n")
         if "bloomberg" in sources:
             if self.bloomberg_fetcher:
-                with open(debug_path, "a") as f:
-                    f.write(f"[fetch_all] Adding Bloomberg fetcher\n")
                 tasks.append(("bloomberg", self.bloomberg_fetcher.fetch(days_back=days_back)))
                 logger.info("Added Bloomberg fetcher")
             else:
                 logger.warning("Bloomberg requested but requires paid subscription (not configured)")
 
         # Add Washington Post if requested (always available)
-        with open(debug_path, "a") as f:
-            f.write(f"[fetch_all] 'washingtonpost' in {sources} = {'washingtonpost' in sources}\n")
         if "washingtonpost" in sources:
-            with open(debug_path, "a") as f:
-                f.write(f"[fetch_all] Adding Washington Post fetcher\n")
             tasks.append(("washingtonpost", self.washingtonpost_fetcher.fetch(days_back=days_back, interests=interests)))
-            logger.info("Added Washington Post fetcher (RSS)")
-
-        with open(debug_path, "a") as f:
-            f.write(f"[fetch_all] Final tasks: {len(tasks)} fetchers\n")
+            logger.info("Added Washington Post fetcher")
 
         # Run all fetches concurrently
         articles = []
@@ -713,18 +693,6 @@ class NewsAggregator:
             if article.url not in seen_urls:
                 seen_urls.add(article.url)
                 unique_articles.append(article)
-
-        with open(debug_path, "a") as f:
-            f.write(f"[fetch_all] Total before dedup: {len(articles)}\n")
-            f.write(f"[fetch_all] Total after dedup: {len(unique_articles)}\n")
-
-            # Show breakdown by source
-            source_breakdown = {}
-            for article in unique_articles:
-                source = article.source
-                source_breakdown[source] = source_breakdown.get(source, 0) + 1
-            f.write(f"[fetch_all] Breakdown by source: {source_breakdown}\n")
-            f.write(f"[fetch_all] Returning {len(unique_articles)} articles\n")
 
         logger.info(f"Total articles fetched: {len(unique_articles)} from {sources}")
 

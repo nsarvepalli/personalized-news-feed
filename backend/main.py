@@ -11,7 +11,7 @@ from schemas import (
 )
 from services.news_fetcher import NewsAggregator
 from services.summarizer import ArticleSummarizer
-import database_streamlit as db
+from database_supabase import get_db, close_db
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -48,17 +48,18 @@ except Exception as e:
     logger.warning(f"⚠️  Summarizer initialization failed: {e}")
     summarizer = None
 
-# Initialize SQLite database
+# Initialize Supabase database
 try:
-    db.init_db()
-    logger.info("✅ Database initialized (SQLite)")
+    db = get_db()
+    logger.info("✅ Database initialized (Supabase PostgreSQL)")
 
     # Cleanup old saved articles on startup (keep only last 7 days)
     deleted = db.cleanup_old_saved_articles(days=7)
     if deleted > 0:
         logger.info(f"🧹 Startup cleanup: Removed {deleted} old saved articles")
 except Exception as e:
-    logger.warning(f"⚠️  Database initialization failed: {e}")
+    logger.error(f"❌ Database initialization failed: {e}")
+    raise
 
 
 # Health check endpoint
@@ -80,136 +81,6 @@ async def health_check():
     }
 
 
-# Articles endpoints
-@app.get("/articles", tags=["Articles"])
-async def list_articles(skip: int = 0, limit: int = 20, source: str = None):
-    """Get all articles from database"""
-    try:
-        articles = db.get_articles(skip=skip, limit=limit, source=source)
-        return {
-            "status": "success",
-            "total_articles": len(articles),
-            "articles": articles
-        }
-    except Exception as e:
-        logger.error(f"❌ Database query failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/articles", tags=["Articles"])
-async def create_article(article: ArticleCreate):
-    """Create a new article in database"""
-    try:
-        result = db.create_article(article.model_dump())
-        if result:
-            return {
-                "status": "success",
-                "article": result
-            }
-        else:
-            raise HTTPException(status_code=409, detail="Article already exists")
-    except Exception as e:
-        logger.error(f"❌ Failed to create article: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# Summaries endpoints
-@app.get("/summaries", tags=["Summaries"])
-async def list_summaries(skip: int = 0, limit: int = 20):
-    """Get all article summaries from database"""
-    try:
-        summaries = db.get_summaries(skip=skip, limit=limit)
-        return {
-            "status": "success",
-            "total_summaries": len(summaries),
-            "summaries": summaries
-        }
-    except Exception as e:
-        logger.error(f"❌ Database query failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/summaries/by-interest", tags=["Summaries"])
-async def get_summaries_by_interest(interest: str, skip: int = 0, limit: int = 20):
-    """Get summaries filtered by interest from database"""
-    try:
-        summaries = db.get_summaries(skip=skip, limit=limit, interest=interest)
-        return {
-            "status": "success",
-            "total_summaries": len(summaries),
-            "interest": interest,
-            "summaries": summaries
-        }
-    except Exception as e:
-        logger.error(f"❌ Database query failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/digests/morning", tags=["Digests"])
-async def get_morning_digest():
-    """Get latest morning digest"""
-    try:
-        digests = db.get_digests_by_type("morning", limit=1)
-        if digests:
-            return {
-                "status": "success",
-                "digest": digests[0]
-            }
-        return {"status": "success", "digest": None}
-    except Exception as e:
-        logger.error(f"❌ Failed to fetch digest: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/digests/evening", tags=["Digests"])
-async def get_evening_digest():
-    """Get latest evening digest"""
-    try:
-        digests = db.get_digests_by_type("evening", limit=1)
-        if digests:
-            return {
-                "status": "success",
-                "digest": digests[0]
-            }
-        return {"status": "success", "digest": None}
-    except Exception as e:
-        logger.error(f"❌ Failed to fetch digest: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# User preferences endpoints
-@app.get("/preferences", tags=["Preferences"])
-async def get_preferences():
-    """Get user preferences from database"""
-    try:
-        prefs = db.get_preferences()
-        if prefs:
-            return {
-                "status": "success",
-                "preferences": prefs
-            }
-        return {
-            "status": "success",
-            "preferences": None,
-            "message": "No preferences set yet"
-        }
-    except Exception as e:
-        logger.error(f"❌ Failed to fetch preferences: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/preferences", tags=["Preferences"])
-async def update_preferences(prefs: UserPreferenceCreate):
-    """Update user preferences in database"""
-    try:
-        result = db.create_or_update_preferences(prefs.model_dump())
-        return {
-            "status": "success",
-            "preferences": result
-        }
-    except Exception as e:
-        logger.error(f"❌ Failed to update preferences: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # News Fetcher endpoints (for testing)
@@ -227,23 +98,6 @@ async def fetch_articles(days_back: int = 1, sources: str = None, interests: str
     This is a test endpoint to verify news fetchers are working.
     In production, this would be called by GitHub Actions on a schedule.
     """
-    # MINIMAL DEBUG - Write raw request params to file IMMEDIATELY
-    import os
-    import sys
-    cwd = os.getcwd()
-    main_file = os.path.abspath(__file__)
-    main_dir = os.path.dirname(main_file)
-    debug_path = os.path.join(main_dir, "debug.log")
-    sys.stderr.write(f"[DEBUG] CWD={cwd}, __file__={main_file}, debug_path={debug_path}\n")
-    try:
-        with open(debug_path, "a") as f:
-            f.write(f"\n[ENDPOINT HIT] sources param = {repr(sources)}\n")
-            f.write(f"[DEBUG] __file__={main_file}, debug_path={debug_path}\n")
-            f.flush()
-        sys.stderr.write(f"[DEBUG] Successfully wrote to {debug_path}\n")
-    except Exception as e:
-        sys.stderr.write(f"ERROR writing debug.log: {e}\n")
-
     try:
         # Parse sources
         sources_list = None
@@ -261,19 +115,6 @@ async def fetch_articles(days_back: int = 1, sources: str = None, interests: str
             logger.info(f"🎯 INTERESTS TO FILTER: {interests_list}")
 
         articles = await news_aggregator.fetch_all(days_back=days_back, sources=sources_list, interests=interests_list)
-
-        # Log final results
-        with open(debug_path, "a") as f:
-            f.write(f"[RESULT] Got {len(articles)} articles\n")
-            if articles:
-                sources_in_results = set(a.source for a in articles)
-                f.write(f"[SOURCES] {sources_in_results}\n")
-            f.flush()
-
-        logger.info(f"✅ FINAL ARTICLES COUNT: {len(articles)}")
-        if articles:
-            sources_in_results = set(a.source for a in articles)
-            logger.info(f"✅ SOURCES IN RESULTS: {sources_in_results}")
 
         logger.info(f"✅ Fetch complete - {len(articles)} articles from {sources_list or 'all sources'}")
 
@@ -534,27 +375,7 @@ async def summarize_cached_articles(interests: str = "business,education,ai,upsk
         logger.info(f"📝 Summarizing {len(articles_dict)} cached articles")
         summarized = summarizer.batch_summarize(articles_dict, user_interests)
 
-        # Save to database if requested
-        if save_to_db:
-            for i, article_data in enumerate(articles_dict):
-                try:
-                    # Save article if not exists
-                    if not db.article_exists(article_data["url"]):
-                        db.create_article(article_data)
-
-                    # Save summary for this article
-                    if i < len(summarized):
-                        summary_data = {
-                            "article_id": i + 1,  # Will be updated after article fetch
-                            "summary_text": summarized[i].get("summary", ""),
-                            "interest_tags": summarized[i].get("tags", []),
-                            "relevance_score": summarized[i].get("relevance_score", 0.0),
-                            "model_used": "gpt-3.5-turbo"
-                        }
-                        db.create_summary(summary_data)
-                except Exception as e:
-                    logger.warning(f"⚠️  Failed to save article/summary to DB: {e}")
-                    continue
+        # Note: save_to_db parameter is kept for backward compatibility but not used in Supabase MVP
 
         # Sort by relevance score
         summarized = sorted(summarized, key=lambda x: x.get("relevance_score", 0), reverse=True)
